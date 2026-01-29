@@ -4,6 +4,8 @@ import uvicorn
 from datetime import datetime
 from database import execute_query
 from alert import check_all_coins
+from model import load_price_data, predict_next_3_days
+
 
 app = FastAPI(title="Crypto API", version="1.0")
 
@@ -145,78 +147,6 @@ def daily_return(symbol: str):
     return {"symbol": symbol, "count": len(df), "data": df.to_dict(orient="records")}
 
 
-@app.get("/coins/difference/{symbol}")
-def coins_vs(symbol: str):
-    query = """
-        SELECT
-        c.Symbol,
-        AVG((ph.HighPrice - ph.LowPrice) / ph.OpenPrice * 100) AS AvgVolatility
-        FROM dbo.PriceHistory ph
-        JOIN dbo.Coins c ON c.CoinID = ph.CoinID
-        WHERE c.Symbol = ?
-        GROUP BY c.Symbol
-    """
-
-    df = execute_query(query, params=(symbol,))
-
-    if df is None or df.empty:
-        raise HTTPException(status_code=404, detail=f"{symbol} üçün data tapılmadı")
-
-    return {"symbol": symbol, "avg_volatility": df.to_dict(orient="records")[0]["AvgVolatility"]}
-
-
-@app.get("/compare")
-def compare_coins(symbols: str, days: int = 30):
-    symbol_list = [s.strip().upper() for s in symbols.split(',')]
-    
-    if len(symbol_list) < 2:
-        raise HTTPException(status_code=400, detail="Ən azı 2 coin seçin")
-    
-    results = []
-    
-    for symbol in symbol_list:
-        query = """
-            SELECT TOP 1 ph.ClosePrice, ph.OpenTime
-            FROM PriceHistory ph
-            JOIN Coins c ON ph.CoinID = c.CoinID
-            WHERE c.Symbol = ?
-            ORDER BY ph.OpenTime DESC
-        """
-        df = execute_query(query, params=(symbol,))
-        
-        if df is None or df.empty:
-            continue
-        
-        latest_price = float(df['ClosePrice'].iloc[0])
-        
-        past_query = f"""
-            SELECT TOP 1 ph.ClosePrice
-            FROM PriceHistory ph
-            JOIN Coins c ON ph.CoinID = c.CoinID
-            WHERE c.Symbol = ?
-            AND ph.OpenTime <= DATEADD(day, -{days}, (SELECT MAX(OpenTime) FROM PriceHistory))
-            ORDER BY ph.OpenTime DESC
-        """
-        df_past = execute_query(past_query, params=(symbol,))
-        
-        result = {"symbol": symbol, "current_price": latest_price}
-        
-        if df_past is not None and not df_past.empty:
-            past_price = float(df_past['ClosePrice'].iloc[0])
-            change_pct = ((latest_price - past_price) / past_price) * 100
-            result["change_pct"] = round(change_pct, 2)
-        
-        results.append(result)
-    
-    if not results:
-        raise HTTPException(status_code=404, detail="Data tapılmadı")
-    
-    best = max(results, key=lambda x: x.get('change_pct', -999)) if results else None
-    worst = min(results, key=lambda x: x.get('change_pct', 999)) if results else None
-    
-    return {"days": days, "coins": results, "best": best['symbol'] if best else None, "worst": worst['symbol'] if worst else None}
-
-
 @app.get("/alert")
 def alert():
     try:
@@ -236,6 +166,17 @@ def alert():
             "message": f"{len(alerts)} anomaly tapıldı" if alerts else "Anomaly tapılmadı"}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.get("/predict/{symbol}")
+def predict(symbol: str):
+    df = load_price_data(symbol)
+    preds = predict_next_3_days(df)
+    if preds is None:
+        return {"error": "Yetərli data yoxdur"}
+    return {"symbol": symbol,
+            "current_price": float(df["ClosePrice"].iloc[-1]),
+            "predictions": [float(p) for p in preds]}
 
 
 if __name__ == "__main__":

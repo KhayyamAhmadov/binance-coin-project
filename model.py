@@ -7,8 +7,9 @@ from sklearn.metrics import mean_squared_error, mean_absolute_error, mean_absolu
 from tensorflow.keras.models import Sequential
 from tensorflow.keras.layers import LSTM, Dense, Dropout, Bidirectional
 from tensorflow.keras.callbacks import EarlyStopping, ReduceLROnPlateau
-from database import execute_query
 from datetime import datetime
+from database import execute_query
+
 
 MODEL_FOLDER = "models"
 LOOKBACK = 168
@@ -51,21 +52,19 @@ def add_features(df):
     df = df.copy()
     
     df["Volatility"] = df["HighPrice"] - df["LowPrice"]
-    df["SMA_7"] = df["ClosePrice"].rolling(window=7).mean()
-    df["SMA_30"] = df["ClosePrice"].rolling(window=30).mean()
-    
+    df["SMA_7"] = df["ClosePrice"].rolling(window=7, min_periods=1).mean()
+    df["SMA_30"] = df["ClosePrice"].rolling(window=30, min_periods=1).mean()
     delta = df["ClosePrice"].diff()
-    gain = delta.where(delta > 0, 0).rolling(window=14).mean()
-    loss = -delta.where(delta < 0, 0).rolling(window=14).mean()
-    rs = gain / loss
+    gain = delta.where(delta > 0, 0).rolling(window=14, min_periods=1).mean()
+    loss = -delta.where(delta < 0, 0).rolling(window=14, min_periods=1).mean()
+    rs = gain / (loss + 1e-10)
     df["RSI"] = 100 - (100 / (1 + rs))
-    
     ema_12 = df["ClosePrice"].ewm(span=12, adjust=False).mean()
     ema_26 = df["ClosePrice"].ewm(span=26, adjust=False).mean()
     df["MACD"] = ema_12 - ema_26
-    
-    df["Volume_MA"] = df["Volume"].rolling(window=7).mean()
-    df = df.dropna()
+    df["Volume_MA"] = df["Volume"].rolling(window=7, min_periods=1).mean()
+    df = df.iloc[30:].copy()
+    df = df.fillna(method='bfill').fillna(method='ffill').fillna(0)
     
     features = ["ClosePrice", "Volume", "Volatility", "SMA_7", "SMA_30", "RSI", "MACD", "Volume_MA"]
     
@@ -111,10 +110,8 @@ def send_alert(symbol, alert_type, message):
 
 def check_prediction_alerts(symbol, current_price, predictions):
     alerts = []
-    
     for i, pred in enumerate(predictions, 1):
         pct_change = ((pred - current_price) / current_price) * 100
-        
         if abs(pct_change) >= ALERT_THRESHOLD_PERCENT:
             direction = "YÜKSƏLMƏ" if pct_change > 0 else "DÜŞMƏ"
             alert_msg = (
@@ -131,24 +128,20 @@ def check_prediction_alerts(symbol, current_price, predictions):
 
 def check_evaluation_alerts(symbol, mape_values):
     avg_mape = np.mean(mape_values)
-    
     if avg_mape >= ALERT_MAPE_THRESHOLD:
         alert_msg = (
-            f"Model dəqiqliyi aşağıdır!\n"
+            f"Dəqiqliyi aşağıdır!\n"
             f"   Ortalama MAPE: {avg_mape:.2f}%\n"
-            f"   Threshold: {ALERT_MAPE_THRESHOLD}%\n"
-            f"   Tövsiyə: Model yenidən train edilməlidir")
+            f"   Threshold: {ALERT_MAPE_THRESHOLD}%")
         send_alert(symbol, "LOW ACCURACY", alert_msg)
 
 
 def train_lstm(symbol):
     df = load_price_data(symbol)
-
     if df.empty or len(df) < LOOKBACK + HORIZON + 100:
         return None, None, None
 
     features = add_features(df)
-    
     if features.empty or len(features) < LOOKBACK + HORIZON:
         return None, None, None
     
@@ -158,7 +151,7 @@ def train_lstm(symbol):
     
     scaler = MinMaxScaler()
     scaler.fit(train_features.values)
-    
+
     train_scaled = scaler.transform(train_features.values)
     test_scaled = scaler.transform(test_features.values)
     
@@ -178,14 +171,16 @@ def train_lstm(symbol):
 
     early_stop = EarlyStopping(
         monitor="val_loss",
-        patience=10,
-        restore_best_weights=True)
+        patience=20,
+        restore_best_weights=True,
+        verbose=0)
     
     reduce_lr = ReduceLROnPlateau(
         monitor="val_loss",
         factor=0.5,
-        patience=5,
-        min_lr=0.00001)
+        patience=10,
+        min_lr=0.00001,
+        verbose=0)
 
     model.fit(
         X_train,
@@ -215,7 +210,6 @@ def evaluate_model(symbol, model, scaler, test_data):
 
     y_true = np.array(y_true)
     y_pred = np.array(y_pred)
-
     mape_values = []
     
     for h in range(HORIZON):
@@ -246,10 +240,13 @@ def run_all():
     with open(log_file, "w", encoding="utf-8") as f:
         f.write(f"=== Alert Log - {datetime.now().strftime('%Y-%m-%d %H:%M:%S')} ===\n\n")
     
-    for coin in get_all_coins():
+    coins = get_all_coins()
+    
+    for coin in coins:
         print(f"\nProcessing {coin}...")
 
         model, scaler, test_data = train_lstm(coin)
+        
         if model is None:
             continue
 
@@ -266,7 +263,7 @@ def run_all():
             current = df_latest["ClosePrice"].iloc[-1]
             check_prediction_alerts(coin, current, preds)
         
-        print(f"✅ {coin} completed")
+        print(f"{coin} completed")
 
 
 if __name__ == "__main__":
