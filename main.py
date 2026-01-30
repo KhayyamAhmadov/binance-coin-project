@@ -162,7 +162,7 @@ def alert():
                 "alertDate": str(alert['AlertDate']),
                 "alertType": alert['AlertType']})
         
-        return {"success": True,  "totalAlerts": len(alerts),  "alerts": formatted_alerts,
+        return {"success": True, "totalAlerts": len(alerts),  "alerts": formatted_alerts,
             "message": f"{len(alerts)} anomaly tapıldı" if alerts else "Anomaly tapılmadı"}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
