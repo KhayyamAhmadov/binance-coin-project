@@ -61,3 +61,17 @@
 | AskPrice      | DECIMAL(18,8) | NOT NULL                              | Lowest ask price                       |
 | AskQty        | DECIMAL(30,8) | NOT NULL                              | Ask quantity                           |
 | InsertedDate  | DATETIME2     | DEFAULT SYSDATETIME()                 | Record insertion timestamp             |
+
+---
+
+## dbo.AnomalyAlerts
+| Column        | Data Type      | Constraints                           | Description                          |
+|---------------|---------------|--------------------------------------|--------------------------------------|
+| AlertID       | INT            | PRIMARY KEY, IDENTITY(1,1)           | Unique alert ID                       |
+| CoinID        | INT            | FOREIGN KEY → dbo.Coins(CoinID), NOT NULL | Coin associated with the alert       |
+| AlertTime     | DATETIME2      | NOT NULL, DEFAULT SYSDATETIME()      | Timestamp when the alert was generated |
+| AlertDate     | DATE           | NOT NULL                              | Date of the alert                     |
+| CurrentPrice  | DECIMAL(18,8)  | NOT NULL                              | Current price at the time of alert   |
+| ReferencePrice| DECIMAL(18,8)  | NOT NULL                              | Reference or previous price          |
+| ChangePercent | DECIMAL(10,4)  | NOT NULL                              | Price change percentage (%)           |
+| AlertType     | NVARCHAR(30)   | NOT NULL                              | Type of alert (e.g., "Spike", "Drop") |
