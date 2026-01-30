@@ -64,7 +64,9 @@ def add_features(df):
     df["MACD"] = ema_12 - ema_26
     df["Volume_MA"] = df["Volume"].rolling(window=7, min_periods=1).mean()
     df = df.iloc[30:].copy()
-    df = df.fillna(method='bfill').fillna(method='ffill').fillna(0)
+    # df = df.fillna(method='bfill').fillna(method='ffill').fillna(0)
+    df = df.bfill().ffill().fillna(0)
+
     
     features = ["ClosePrice", "Volume", "Volatility", "SMA_7", "SMA_30", "RSI", "MACD", "Volume_MA"]
     

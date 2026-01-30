@@ -28,7 +28,8 @@ else:
         
 
 selected_coin = st.selectbox("🪙 Coin seçin", coins, key="coin_selector")
-tab1, tab2, tab3, tab4 = st.tabs(["📊 Qiymət Tarixi", "📈 Statistika", "📉 Tarix Aralığı", "🔔 Alertlər"])
+tab1, tab2, tab3, tab4, tab5 = st.tabs(["📊 Qiymət Tarixi", "📈 Statistika", "🔎 LSTM Price Prediction", "📉 Tarix Aralığı", "🔔 Alertlər"])
+
 
 with tab1:
     st.subheader(f"{selected_coin} - Son Qiymətlər")
@@ -59,6 +60,7 @@ with tab1:
     except Exception as e:
         st.error(f"Xəta: {str(e)}")
 
+
 with tab2:
     st.subheader(f"{selected_coin} - Statistika")
     try:
@@ -80,7 +82,64 @@ with tab2:
     except Exception as e:
         st.error(f"Xəta: {str(e)}")
 
+
 with tab3:
+    st.subheader("🔎 LSTM Price Prediction")
+    st.info(f"Seçilmiş coin: **{selected_coin}**")
+
+    if st.button("Predict", key="predict_btn"):
+        try:
+            with st.spinner("Model proqnozlaşdırır..."):
+                response = requests.get(
+                    f"{API_URL}/predict/{selected_coin}", timeout=10
+                )
+
+            if response.status_code != 200:
+                st.error("❌ Model və ya data tapılmadı")
+            else:
+                data = response.json()
+
+                st.metric("Current Price", f"${data['current_price']}")
+
+                df_pred = pd.DataFrame({
+                    "Day": ["Today", "Day +1", "Day +2", "Day +3"],
+                    "Price": [
+                        data["current_price"],
+                        data["day_1"],
+                        data["day_2"],
+                        data["day_3"]
+                    ]
+                })
+
+                # ✅ Fix: x-axis düzgün sıralansın
+                df_pred["Day"] = pd.Categorical(
+                    df_pred["Day"],
+                    categories=["Today", "Day +1", "Day +2", "Day +3"],
+                    ordered=True
+                )
+                df_pred = df_pred.sort_values("Day")
+
+                # =====================
+                # Display Table
+                # =====================
+                st.subheader("🔎 Price Forecast")
+                st.table(df_pred)
+
+                # =====================
+                # Line Chart
+                # =====================
+                st.line_chart(df_pred.set_index("Day"))
+
+        except requests.exceptions.Timeout:
+            st.error("⏱ API cavab vermədi")
+        except requests.exceptions.ConnectionError:
+            st.error("API ilə əlaqə yoxdur")
+        except Exception as e:
+            st.error(f"Gözlənilməz xəta: {e}")
+
+
+
+with tab4:
     st.subheader(f"{selected_coin} - Tarix Aralığı")
     col1, col2 = st.columns(2)
     start_date = col1.date_input("Başlanğıc tarixi")
@@ -111,7 +170,7 @@ with tab3:
         st.error(f"Xəta: {str(e)}")
 
 
-with tab4:
+with tab5:
     st.subheader("🔔 Anomaly Alertlər")
     if st.button("🔄 Alert Yoxla", type="primary"):
         try:
@@ -138,6 +197,11 @@ with tab4:
                                 st.write(f"Cari qiymət: {alert['currentPrice']}")
                                 st.write(f"Əvvəlki qiymət: {alert['referencePrice']}")
                                 st.write(f"Alert tipi: {alert['alertType']}")
+
+                                if alert['isStale']:
+                                    st.warning(f"⏱ Son alert: {alert['alertDate']} — bu tarixdən sonra alert olmayıb")
+                                else:
+                                    st.success("✅ Aktiv alert")
                             
                             st.markdown("---")
                 else:

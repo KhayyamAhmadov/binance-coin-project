@@ -38,26 +38,38 @@ def get_last_processed_date(coin_id):
     return None
 
 
+def get_last_data_date(coin_id):
+    query = """
+        SELECT MAX(CloseTime) AS LastDataDate
+        FROM dbo.PriceHistory
+        WHERE CoinID = ?
+    """
+    df = execute_query(query, params=(coin_id,))
+    if df is not None and not df.empty and df['LastDataDate'].iloc[0] is not None:
+        return pd.to_datetime(df['LastDataDate'].iloc[0]).date()
+    return None
+
+
 def check_alerts_for_coin(coin):
     coin_id = coin['CoinID']
     symbol = coin['Symbol']
     df = get_price_history(coin_id, days=100)
     if df is None or len(df) < 10:
-        return None 
-    
-    last_close_time = df['CloseTime'].iloc[-1]
-    last_close_date = pd.to_datetime(last_close_time).date()
-    last_processed = get_last_processed_date(coin_id)
-    
+        return None
+
+    last_data_date = get_last_data_date(coin_id)
     df['ChangePercent'] = df['ClosePrice'].pct_change() * 100
     valid_changes = df['ChangePercent'].dropna()
     alert = None
     if len(valid_changes) >= 5:
         mean_change = valid_changes.abs().mean()
         last_change = df['ChangePercent'].iloc[-1]
+
         if not pd.isna(last_change):
             threshold = max(mean_change * 3, 5.0)
+
             if abs(last_change) >= threshold:
+                alert_date = pd.to_datetime(df['CloseTime'].iloc[-1]).date()
                 alert = {
                     'CoinID': coin_id,
                     'CoinSymbol': symbol,
@@ -65,12 +77,14 @@ def check_alerts_for_coin(coin):
                     'ReferencePrice': float(df['ClosePrice'].iloc[-2]),
                     'ChangePercent': float(last_change),
                     'AlertType': 'Böyük dəyişiklik',
-                    'AlertDate': last_close_date}
+                    'AlertDate': alert_date,
+                    'IsStale': False}
                 save_alert(alert)
 
     if alert is None:
         query = """
-            SELECT TOP 1 CoinID, CurrentPrice, ReferencePrice, ChangePercent, AlertType, AlertDate
+            SELECT TOP 1 CoinID, CurrentPrice, ReferencePrice,
+                   ChangePercent, AlertType, AlertDate
             FROM dbo.AnomalyAlerts
             WHERE CoinID = ?
             ORDER BY AlertDate DESC
@@ -78,6 +92,7 @@ def check_alerts_for_coin(coin):
         df_last = execute_query(query, params=(coin_id,))
         if df_last is not None and not df_last.empty:
             row = df_last.iloc[0]
+            alert_date = pd.to_datetime(row['AlertDate']).date()
             alert = {
                 'CoinID': row['CoinID'],
                 'CoinSymbol': symbol,
@@ -85,7 +100,8 @@ def check_alerts_for_coin(coin):
                 'ReferencePrice': float(row['ReferencePrice']),
                 'ChangePercent': float(row['ChangePercent']),
                 'AlertType': row['AlertType'],
-                'AlertDate': pd.to_datetime(row['AlertDate']).date()}
+                'AlertDate': alert_date,
+                'IsStale': last_data_date and alert_date < last_data_date}
     return alert
 
 

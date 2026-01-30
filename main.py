@@ -4,7 +4,10 @@ import uvicorn
 from datetime import datetime
 from database import execute_query
 from alert import check_all_coins
-from model import load_price_data, predict_next_3_days
+from model import predict_next_3_days
+from tensorflow.keras.models import load_model
+import pickle, os
+import pandas as pd 
 
 
 app = FastAPI(title="Crypto API", version="1.0")
@@ -151,7 +154,6 @@ def daily_return(symbol: str):
 def alert():
     try:
         alerts = check_all_coins()
-        
         formatted_alerts = []
         for alert in alerts:
             formatted_alerts.append({
@@ -160,23 +162,55 @@ def alert():
                 "currentPrice": f"${alert['CurrentPrice']:.6f}",
                 "referencePrice": f"${alert['ReferencePrice']:.6f}",
                 "alertDate": str(alert['AlertDate']),
-                "alertType": alert['AlertType']})
-        
-        return {"success": True, "totalAlerts": len(alerts),  "alerts": formatted_alerts,
-            "message": f"{len(alerts)} anomaly tapıldı" if alerts else "Anomaly tapılmadı"}
+                "alertType": alert['AlertType'],
+                "isStale": alert.get("IsStale", False),
+                "statusMessage": (
+                    "⚠️ Bu tarixdən sonra alert verilməyib"
+                    if alert.get("IsStale")
+                    else "✅ Aktiv alert")})
+        return {
+            "success": True,
+            "totalAlerts": len(formatted_alerts),
+            "alerts": formatted_alerts,
+            "message": "Alertlər yükləndi"}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
 
+MODEL_FOLDER = "models"
 @app.get("/predict/{symbol}")
 def predict(symbol: str):
-    df = load_price_data(symbol)
-    preds = predict_next_3_days(df)
-    if preds is None:
-        return {"error": "Yetərli data yoxdur"}
-    return {"symbol": symbol,
-            "current_price": float(df["ClosePrice"].iloc[-1]),
-            "predictions": [float(p) for p in preds]}
+
+    model_path = f"{MODEL_FOLDER}/lstm_{symbol}.keras"
+    scaler_path = f"{MODEL_FOLDER}/lstm_{symbol}_scaler.pkl"
+    if not os.path.exists(model_path):
+        raise HTTPException(404, "Model yoxdur")
+
+    model = load_model(model_path)
+    scaler = pickle.load(open(scaler_path, "rb"))
+    df = execute_query("""
+        SELECT TOP (5000)
+            ph.OpenTime, ph.HighPrice, ph.LowPrice,
+            ph.Volume, ph.ClosePrice, ph.OpenPrice
+        FROM dbo.PriceHistory ph
+        JOIN dbo.Coins c ON ph.CoinID = c.CoinID
+        WHERE c.Symbol = ?
+        ORDER BY ph.OpenTime
+    """, params=(symbol,))
+
+    if df is None or df.empty:
+        raise HTTPException(404, "Data yoxdur")
+
+    df["OpenTime"] = pd.to_datetime(df["OpenTime"])
+    df.set_index("OpenTime", inplace=True)
+    preds = predict_next_3_days(model, scaler, df)
+    current = df["ClosePrice"].iloc[-1]
+    return {
+        "symbol": symbol,
+        "current_price": round(float(current), 4),
+        "day_1": round(float(preds[0]), 4),
+        "day_2": round(float(preds[1]), 4),
+        "day_3": round(float(preds[2]), 4)}
 
 
 if __name__ == "__main__":
