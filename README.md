@@ -11,7 +11,6 @@
 ---
 
 ## Streamlit UI 
-<img width="1900" height="946" alt="Screenshot 2026-01-31 122628" src="https://github.com/user-attachments/assets/3159aebc-f17d-457b-9295-b9c7bcdd0d13" />
 <img width="1909" height="946" alt="Screenshot 2026-01-31 122655" src="https://github.com/user-attachments/assets/d34f9e2b-449e-498d-902f-b20b1d13272a" />
 <img width="1905" height="944" alt="Screenshot 2026-01-31 122708" src="https://github.com/user-attachments/assets/513fa869-aa8e-4759-9f0d-39c2d677acf6" />
 <img width="1908" height="946" alt="Screenshot 2026-01-31 122750" src="https://github.com/user-attachments/assets/4d5e5153-49eb-45ec-9541-0fcbbb7ef96a" />
