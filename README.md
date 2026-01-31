@@ -1,5 +1,5 @@
 ## Architecture
-<img width="1438" height="433" alt="Screenshot 2026-01-31 182527" src="https://github.com/user-attachments/assets/34021160-6576-48de-8221-910d35cd8807" />
+<img width="1421" height="460" alt="Screenshot 2026-01-31 185058" src="https://github.com/user-attachments/assets/656de387-170d-492a-9a46-16785ec07239" />
 
 ---
 
