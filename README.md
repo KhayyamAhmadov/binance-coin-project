@@ -42,12 +42,17 @@ pip install -r requirements.txt
 py pipeline.py
 ```
 
-### 5️⃣ Run Main Script
+### 5️⃣ Run LSTM Model Script
+```bash
+py model.py
+```
+
+### 6️⃣ Run Main Script
 ```bash
 py main.py
 ```
 
-### 6️⃣ Run Streamlit App
+### 7️⃣ Run Streamlit App
 ```bash
 streamlit run app.py
 ```
